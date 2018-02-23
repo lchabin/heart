@@ -1,16 +1,24 @@
 # Prerequisites
 *.d
+*.Bak
 
 # Object files
 *.o
 *.ko
 *.obj
 *.elf
+*.crf
+*.lnp
+*.dep
+*.s
 
 # Linker output
 *.ilk
 *.map
 *.exp
+*.map
+*.axf
+*.lst
 
 # Precompiled Headers
 *.gch
@@ -34,7 +42,7 @@
 *.app
 *.i*86
 *.x86_64
-*.hex
+
 
 # Debug files
 *.dSYM/
