@@ -40,13 +40,16 @@
 #include "stm32l0xx_hal.h"
 
 /* USER CODE BEGIN Includes */
-
+#include "stm32l0xx_hal_rtc.h"
+#include "led.h"
 /* USER CODE END Includes */
 
 /* Private variables ---------------------------------------------------------*/
 ADC_HandleTypeDef hadc;
 
 RTC_HandleTypeDef hrtc;
+
+UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
@@ -58,6 +61,7 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 void MX_ADC_Init(void);
 void MX_RTC_Init(void);
+static void MX_USART2_UART_Init(void);
 
 /* USER CODE BEGIN PFP */
 /* Private function prototypes -----------------------------------------------*/
@@ -65,57 +69,100 @@ void MX_RTC_Init(void);
 /* USER CODE END PFP */
 
 /* USER CODE BEGIN 0 */
-void ledOn(void)
+
+uint8_t getBCD(uint8_t *str, int i)
 {
-  HAL_GPIO_WritePin(GPIOB, LED_Pin, GPIO_PIN_RESET);
+	uint8_t nibble_low, nibble_high;
+	
+	i = i*3;
+	
+	nibble_high = str[i]-'0';
+	nibble_low  = str[i+1]-'0';
+	
+	return (nibble_high<<4)|nibble_low;
 }
 
-void ledOff(void)
+/* RTC init function */
+// "18h00m00s06w02m17d18y" 21 bytes
+// 01w == monday
+enum time_date_fields {TD_HOUR, TD_MIN, TD_SEC, TD_WEEKDAY, TD_MONTH, TD_DAY, TD_YEAR};
+	
+void RTC_Init_Time_and_Date(uint8_t td[30])
 {
-  HAL_GPIO_WritePin(GPIOB, LED_Pin, GPIO_PIN_SET);
+
+  RTC_TimeTypeDef sTime;
+  RTC_DateTypeDef sDate;
+
+	/**Initialize RTC Only 
+	*/
+  hrtc.Instance = RTC;
+
+  hrtc.Init.HourFormat = RTC_HOURFORMAT_24;
+  hrtc.Init.AsynchPrediv = 127;
+  hrtc.Init.SynchPrediv = 255;
+  hrtc.Init.OutPut = RTC_OUTPUT_DISABLE;
+  hrtc.Init.OutPutRemap = RTC_OUTPUT_REMAP_NONE;
+  hrtc.Init.OutPutPolarity = RTC_OUTPUT_POLARITY_HIGH;
+  hrtc.Init.OutPutType = RTC_OUTPUT_TYPE_OPENDRAIN;
+	
+  if (HAL_RTC_Init(&hrtc) != HAL_OK)
+		crash(3);
+	
+	/**Initialize RTC and set the Time and Date 
+	*/
+  sTime.Hours   = getBCD(td,TD_HOUR);
+  sTime.Minutes = getBCD(td,TD_MIN);
+  sTime.Seconds = getBCD(td,TD_SEC);
+  sTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
+  sTime.StoreOperation = RTC_STOREOPERATION_RESET;
+	
+  if (HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BCD) != HAL_OK)
+		crash(4);
+
+  sDate.WeekDay = getBCD(td,TD_WEEKDAY);
+  sDate.Month   = getBCD(td,TD_MONTH);
+  sDate.Date    = getBCD(td,TD_DAY);
+  sDate.Year    = getBCD(td,TD_YEAR);
+	
+  if (HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BCD) != HAL_OK)
+		crash(5);
+
 }
 
-// brightness 0..20, duration 20ms
-void ledPWM(uint8_t brightness)
+void RTC_Set_Enable_WakeUp_AlarmA(void)
 {
-	ledOn();
-	HAL_Delay(brightness);
-	ledOff();
-	HAL_Delay(20-brightness);
+  RTC_AlarmTypeDef sAlarm;
+
+  // Enable the Alarm A 
+  
+  sAlarm.AlarmTime.Hours = 0x06;
+  sAlarm.AlarmTime.Minutes = 0x00;
+  sAlarm.AlarmTime.Seconds = 0x30;
+  sAlarm.AlarmTime.SubSeconds = 0x0;
+  sAlarm.AlarmTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
+  sAlarm.AlarmTime.StoreOperation = RTC_STOREOPERATION_RESET;
+  sAlarm.AlarmMask = RTC_ALARMMASK_DATEWEEKDAY|RTC_ALARMMASK_HOURS
+                              |RTC_ALARMMASK_MINUTES;
+  sAlarm.AlarmSubSecondMask = RTC_ALARMSUBSECONDMASK_ALL;
+  sAlarm.AlarmDateWeekDaySel = RTC_ALARMDATEWEEKDAYSEL_DATE;
+  sAlarm.AlarmDateWeekDay = 0x14;
+  sAlarm.Alarm = RTC_ALARM_A;
+  if (HAL_RTC_SetAlarm(&hrtc, &sAlarm, RTC_FORMAT_BCD) != HAL_OK)
+		crash(6);
+	
+  //Enable the WakeUp 
+    
+  if (HAL_RTCEx_SetWakeUpTimer(&hrtc, 21, RTC_WAKEUPCLOCK_CK_SPRE_16BITS) != HAL_OK)
+		crash(7);
+
+	__HAL_RTC_WRITEPROTECTION_DISABLE(&hrtc);
+	RTC->CR |= RTC_CR_ALRAIE;
+	RTC->CR |= RTC_CR_WUTIE; 
+	HAL_Delay(2);
+	__HAL_RTC_WRITEPROTECTION_ENABLE(&hrtc);
+	
 }
 
-void heartBeatOneSecondOld(void)
-{
-		ledOn();
-		HAL_Delay(150);
-		ledOff();
-		HAL_Delay(150);
-		ledOn();
-		HAL_Delay(150);
-		ledOff();
-		HAL_Delay(550);
-}
-
-// 200 ms
-void ledPulse(void)
-{
-	int i;
-	uint8_t brightness = 20;
-
-	for (i=0;i<10;i++)
-	{
-		ledPWM(brightness);
-		brightness-=2;
-	}
-}
-
-void heartBeatOneSecond(void)
-{
-	ledPulse(); // 200ms
-	HAL_Delay(100);
-	ledPulse(); // 200ms
-	HAL_Delay(500);
-}
 
 
 // Even with a quartz 32.768Khz, the clock will drift a lot over the years
@@ -136,12 +183,56 @@ void hourStep(void)
 //Run for 
 void saintValentin(void)
 {
-	for (int i=0;i<3600*(24-2);i++)
+	for (int i=0;i<10 /*3600*(24-2)*/;i++)
 		heartBeatOneSecond();
 }
 
 uint8_t g_saintValentin = 0;
 uint8_t g_wakeUp = 0;
+
+uint8_t WakeUp_AlarmA_Str[30] = "18h00m00s06w02m17d18y";
+
+int waitConfigSerial(uint8_t *cfgStr)
+{
+	int cnt = 0;
+	int toggle = 0;
+	HAL_StatusTypeDef result;
+	uint8_t connect[]="\r\nPlease send my time\r\n";
+	int timeoutcount = 0;
+	
+	HAL_Delay(3000);
+	heartBeatOneSecond();
+	HAL_UART_Transmit(&huart2,connect,sizeof(connect)-1,HAL_MAX_DELAY);
+	
+	while(cnt<21)
+	{
+		result = HAL_UART_Receive(&huart2,&cfgStr[cnt],1,10000); // Blocking
+		if (result == HAL_TIMEOUT)
+		{
+			timeoutcount++;
+			if (timeoutcount==10)
+			{
+				ledOff();
+				return 0;
+			}
+			heartBeatOneSecond();
+			HAL_UART_Transmit(&huart2,connect,sizeof(connect)-1,HAL_MAX_DELAY);
+		}
+		else if (cfgStr[cnt]!='$')
+		{
+			cnt++;
+			if (toggle)
+				ledOn();
+			else 
+				ledOff();
+			toggle = 1-toggle;
+		}
+	}
+	HAL_Delay(1000);
+	ledOff();
+	return 1;
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -152,7 +243,7 @@ uint8_t g_wakeUp = 0;
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-
+	uint32_t tickstart;
   /* USER CODE END 1 */
 
   /* MCU Configuration----------------------------------------------------------*/
@@ -173,28 +264,97 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_ADC_Init();
+//  MX_ADC_Init();
+//  MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
+
+	hrtc.Instance = RTC;
+
+	if (__HAL_RTC_WAKEUPTIMER_GET_FLAG(&hrtc,RTC_ISR_WUTF)) // by WAKE UP
+	{
+		/* Disable the write protection for RTC registers */
+		__HAL_RTC_WRITEPROTECTION_DISABLE(&hrtc);
+		__HAL_RTC_WAKEUPTIMER_DISABLE(&hrtc);
+		__HAL_RTC_WAKEUPTIMER_CLEAR_FLAG(&hrtc, RTC_FLAG_WUTF);
+		tickstart = HAL_GetTick();
+		/* Wait till RTC ALRAWF flag is set and if Time out is reached exit */
+		while(__HAL_RTC_WAKEUPTIMER_GET_FLAG(&hrtc, RTC_ISR_WUTWF) == RESET)
+		{
+			if((HAL_GetTick() - tickstart ) > RTC_TIMEOUT_VALUE)
+			{
+				/* Enable the write protection for RTC registers */
+				__HAL_RTC_WRITEPROTECTION_ENABLE(&hrtc);
+				crash(1);
+			}
+		}
+		__HAL_RTC_WAKEUPTIMER_ENABLE(&hrtc);
+		/* Enable the write protection for RTC registers */
+		__HAL_RTC_WRITEPROTECTION_ENABLE(&hrtc);
+		
+		g_wakeUp = 1;
+	}
+	
+	if (__HAL_RTC_ALARM_GET_FLAG(&hrtc,RTC_ISR_ALRAF)) // By ALARM A
+	{
+		/* Disable the write protection for RTC registers */
+		__HAL_RTC_WRITEPROTECTION_DISABLE(&hrtc);
+		__HAL_RTC_ALARMA_DISABLE(&hrtc);
+		__HAL_RTC_ALARM_CLEAR_FLAG(&hrtc, RTC_FLAG_ALRAF);
+		tickstart = HAL_GetTick();
+		/* Wait till RTC ALRAWF flag is set and if Time out is reached exit */
+		while(__HAL_RTC_ALARM_GET_FLAG(&hrtc, RTC_FLAG_ALRAWF) == RESET)
+		{
+			if((HAL_GetTick() - tickstart ) > RTC_TIMEOUT_VALUE)
+			{
+				/* Enable the write protection for RTC registers */
+				__HAL_RTC_WRITEPROTECTION_ENABLE(&hrtc);					
+				crash(2);
+			}
+		}
+		__HAL_RTC_ALARMA_ENABLE(&hrtc);
+		/* Enable the write protection for RTC registers */
+		__HAL_RTC_WRITEPROTECTION_ENABLE(&hrtc);
+
+		g_saintValentin = 1;
+	}
 
 	if (PWR->CSR & PWR_CSR_SBF) // We come back from standby
 	{
-		if (PWR->CSR & PWR_CSR_WUF) // by WAKE UP
+		PWR->CR |= PWR_CR_CSBF; // reset bit
+		if (g_wakeUp)
 		{
 			hourStep();
-			g_wakeUp = 0;
 		}
-		else // by ALARM A
+		if (g_saintValentin)
 		{
 			saintValentin();
-			g_saintValentin = 0;
 		}
 	}
-	else
+	else // this is a power on startup
 	{
-			MX_RTC_Init();
+		// WakeUp every 
+		// Alarm every 
+		heartBeatOneSecond();
+		MX_USART2_UART_Init();
+		waitConfigSerial(WakeUp_AlarmA_Str);
+		
+		__HAL_RTC_WRITEPROTECTION_DISABLE(&hrtc);
+		__HAL_RTC_WAKEUPTIMER_DISABLE(&hrtc);
+		__HAL_RTC_ALARMA_DISABLE(&hrtc);
+		__HAL_RTC_WRITEPROTECTION_ENABLE(&hrtc);
+
+		heartBeatOneSecond();
+		heartBeatOneSecond();
+		RTC_Init_Time_and_Date(WakeUp_AlarmA_Str);
+		RTC_Set_Enable_WakeUp_AlarmA();
 	}
 
+	g_saintValentin = 0;
+	g_wakeUp = 0;
+	
+	DBGMCU->CR |= DBGMCU_CR_DBG_STOP;
 	DBGMCU->CR |= DBGMCU_CR_DBG_STANDBY;
+
 	HAL_PWREx_EnableFastWakeUp();
 	HAL_PWREx_EnableUltraLowPower();
 	HAL_PWR_EnterSTANDBYMode();	
@@ -205,6 +365,7 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+		saintValentin();
   /* USER CODE END WHILE */
 
   /* USER CODE BEGIN 3 */
@@ -259,7 +420,8 @@ void SystemClock_Config(void)
     _Error_Handler(__FILE__, __LINE__);
   }
 
-  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_RTC;
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART2|RCC_PERIPHCLK_RTC;
+  PeriphClkInit.Usart2ClockSelection = RCC_USART2CLKSOURCE_PCLK1;
   PeriphClkInit.RTCClockSelection = RCC_RTCCLKSOURCE_LSE;
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
   {
@@ -330,7 +492,8 @@ void MX_RTC_Init(void)
     /**Initialize RTC Only 
     */
   hrtc.Instance = RTC;
-if(HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR0) != 0x32F2){
+//if(HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR0) != 0x32F2)
+	{
   hrtc.Init.HourFormat = RTC_HOURFORMAT_24;
   hrtc.Init.AsynchPrediv = 127;
   hrtc.Init.SynchPrediv = 255;
@@ -368,29 +531,51 @@ if(HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR0) != 0x32F2){
     /**Enable the Alarm A 
     */
   sAlarm.AlarmTime.Hours = 0x6;
-  sAlarm.AlarmTime.Minutes = 0x0;
+  sAlarm.AlarmTime.Minutes = 0x2;
   sAlarm.AlarmTime.Seconds = 0x0;
   sAlarm.AlarmTime.SubSeconds = 0x0;
   sAlarm.AlarmTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
   sAlarm.AlarmTime.StoreOperation = RTC_STOREOPERATION_RESET;
-  sAlarm.AlarmMask = RTC_ALARMMASK_DATEWEEKDAY|RTC_ALARMMASK_HOURS;
+  sAlarm.AlarmMask = RTC_ALARMMASK_DATEWEEKDAY|RTC_ALARMMASK_HOURS
+                              |RTC_ALARMMASK_SECONDS;
   sAlarm.AlarmSubSecondMask = RTC_ALARMSUBSECONDMASK_ALL;
   sAlarm.AlarmDateWeekDaySel = RTC_ALARMDATEWEEKDAYSEL_DATE;
   sAlarm.AlarmDateWeekDay = 0x14;
   sAlarm.Alarm = RTC_ALARM_A;
-  if (HAL_RTC_SetAlarm_IT(&hrtc, &sAlarm, RTC_FORMAT_BCD) != HAL_OK)
+  if (HAL_RTC_SetAlarm(&hrtc, &sAlarm, RTC_FORMAT_BCD) != HAL_OK)
   {
     _Error_Handler(__FILE__, __LINE__);
   }
 
     /**Enable the WakeUp 
     */
-  if (HAL_RTCEx_SetWakeUpTimer_IT(&hrtc, 3600, RTC_WAKEUPCLOCK_CK_SPRE_16BITS) != HAL_OK)
+  if (HAL_RTCEx_SetWakeUpTimer(&hrtc, 3600, RTC_WAKEUPCLOCK_CK_SPRE_16BITS) != HAL_OK)
   {
     _Error_Handler(__FILE__, __LINE__);
   }
 
     HAL_RTCEx_BKUPWrite(&hrtc,RTC_BKP_DR0,0x32F2);
+  }
+
+}
+
+/* USART2 init function */
+static void MX_USART2_UART_Init(void)
+{
+
+  huart2.Instance = USART2;
+  huart2.Init.BaudRate = 9600;
+  huart2.Init.WordLength = UART_WORDLENGTH_8B;
+  huart2.Init.StopBits = UART_STOPBITS_1;
+  huart2.Init.Parity = UART_PARITY_NONE;
+  huart2.Init.Mode = UART_MODE_TX_RX;
+  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+  huart2.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  huart2.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  if (HAL_UART_Init(&huart2) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
   }
 
 }
@@ -413,14 +598,24 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, LED_Pin|PHOTOPWR_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(PHOTOPWR_GPIO_Port, PHOTOPWR_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pins : LED_Pin PHOTOPWR_Pin */
-  GPIO_InitStruct.Pin = LED_Pin|PHOTOPWR_Pin;
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin : PHOTOPWR_Pin */
+  GPIO_InitStruct.Pin = PHOTOPWR_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+  HAL_GPIO_Init(PHOTOPWR_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : LED_Pin */
+  GPIO_InitStruct.Pin = LED_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(LED_GPIO_Port, &GPIO_InitStruct);
 
 }
 
