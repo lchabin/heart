@@ -13,8 +13,7 @@ void ledOff(void)
 }
 
 
-// fait clignoter la led RUN avec un code lisible
-// led run == PB8
+// displays a crash code in binary by pulsing the LED 
 void crash(uint8_t crash_code)
 {
 	int j;
@@ -32,11 +31,20 @@ void crash(uint8_t crash_code)
 
 		for (j=0;j<8;j++)
 		{
-			if (crash_code & (1<<(7-j)))
+			if (crash_code & (1<<(7-j))) // starting from b7
+			{
 				ledOn();
-			HAL_Delay(100);
-			ledOff();
-			HAL_Delay(400);
+				HAL_Delay(300); // if 1, long pulse
+				ledOff();
+				HAL_Delay(200);
+			}
+			else
+			{
+				ledOn();
+				HAL_Delay(100); // if 0, short pulse
+				ledOff();
+				HAL_Delay(400);
+			}
 		}
 	}
 }
@@ -51,17 +59,6 @@ void ledPWM(uint8_t brightness)
 	HAL_Delay(20-brightness);
 }
 
-void heartBeatOneSecondOld(void)
-{
-		ledOn();
-		HAL_Delay(150);
-		ledOff();
-		HAL_Delay(150);
-		ledOn();
-		HAL_Delay(150);
-		ledOff();
-		HAL_Delay(550);
-}
 
 // 200 ms
 void ledPulse(void)

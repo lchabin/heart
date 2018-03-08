@@ -42,6 +42,7 @@
 /* USER CODE BEGIN Includes */
 #include "stm32l0xx_hal_rtc.h"
 #include "led.h"
+#include "set_time.h"
 /* USER CODE END Includes */
 
 /* Private variables ---------------------------------------------------------*/
@@ -61,7 +62,6 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 void MX_ADC_Init(void);
 void MX_RTC_Init(void);
-static void MX_USART2_UART_Init(void);
 
 /* USER CODE BEGIN PFP */
 /* Private function prototypes -----------------------------------------------*/
@@ -70,109 +70,14 @@ static void MX_USART2_UART_Init(void);
 
 /* USER CODE BEGIN 0 */
 
-uint8_t getBCD(uint8_t *str, int i)
-{
-	uint8_t nibble_low, nibble_high;
-	
-	i = i*3;
-	
-	nibble_high = str[i]-'0';
-	nibble_low  = str[i+1]-'0';
-	
-	return (nibble_high<<4)|nibble_low;
-}
-
-/* RTC init function */
-// "18h00m00s06w02m17d18y" 21 bytes
-// 01w == monday
-enum time_date_fields {TD_HOUR, TD_MIN, TD_SEC, TD_WEEKDAY, TD_MONTH, TD_DAY, TD_YEAR};
-	
-void RTC_Init_Time_and_Date(uint8_t td[30])
-{
-
-  RTC_TimeTypeDef sTime;
-  RTC_DateTypeDef sDate;
-
-	/**Initialize RTC Only 
-	*/
-  hrtc.Instance = RTC;
-
-  hrtc.Init.HourFormat = RTC_HOURFORMAT_24;
-  hrtc.Init.AsynchPrediv = 127;
-  hrtc.Init.SynchPrediv = 255;
-  hrtc.Init.OutPut = RTC_OUTPUT_DISABLE;
-  hrtc.Init.OutPutRemap = RTC_OUTPUT_REMAP_NONE;
-  hrtc.Init.OutPutPolarity = RTC_OUTPUT_POLARITY_HIGH;
-  hrtc.Init.OutPutType = RTC_OUTPUT_TYPE_OPENDRAIN;
-	
-  if (HAL_RTC_Init(&hrtc) != HAL_OK)
-		crash(3);
-	
-	/**Initialize RTC and set the Time and Date 
-	*/
-  sTime.Hours   = getBCD(td,TD_HOUR);
-  sTime.Minutes = getBCD(td,TD_MIN);
-  sTime.Seconds = getBCD(td,TD_SEC);
-  sTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
-  sTime.StoreOperation = RTC_STOREOPERATION_RESET;
-	
-  if (HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BCD) != HAL_OK)
-		crash(4);
-
-  sDate.WeekDay = getBCD(td,TD_WEEKDAY);
-  sDate.Month   = getBCD(td,TD_MONTH);
-  sDate.Date    = getBCD(td,TD_DAY);
-  sDate.Year    = getBCD(td,TD_YEAR);
-	
-  if (HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BCD) != HAL_OK)
-		crash(5);
-
-}
-
-void RTC_Set_Enable_WakeUp_AlarmA(void)
-{
-  RTC_AlarmTypeDef sAlarm;
-
-  // Enable the Alarm A 
-  
-  sAlarm.AlarmTime.Hours = 0x06;
-  sAlarm.AlarmTime.Minutes = 0x00;
-  sAlarm.AlarmTime.Seconds = 0x30;
-  sAlarm.AlarmTime.SubSeconds = 0x0;
-  sAlarm.AlarmTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
-  sAlarm.AlarmTime.StoreOperation = RTC_STOREOPERATION_RESET;
-  sAlarm.AlarmMask = RTC_ALARMMASK_DATEWEEKDAY|RTC_ALARMMASK_HOURS
-                              |RTC_ALARMMASK_MINUTES;
-  sAlarm.AlarmSubSecondMask = RTC_ALARMSUBSECONDMASK_ALL;
-  sAlarm.AlarmDateWeekDaySel = RTC_ALARMDATEWEEKDAYSEL_DATE;
-  sAlarm.AlarmDateWeekDay = 0x14;
-  sAlarm.Alarm = RTC_ALARM_A;
-  if (HAL_RTC_SetAlarm(&hrtc, &sAlarm, RTC_FORMAT_BCD) != HAL_OK)
-		crash(6);
-	
-  //Enable the WakeUp 
-    
-  if (HAL_RTCEx_SetWakeUpTimer(&hrtc, 21, RTC_WAKEUPCLOCK_CK_SPRE_16BITS) != HAL_OK)
-		crash(7);
-
-	__HAL_RTC_WRITEPROTECTION_DISABLE(&hrtc);
-	RTC->CR |= RTC_CR_ALRAIE;
-	RTC->CR |= RTC_CR_WUTIE; 
-	HAL_Delay(2);
-	__HAL_RTC_WRITEPROTECTION_ENABLE(&hrtc);
-	
-}
-
 
 
 // Even with a quartz 32.768Khz, the clock will drift a lot over the years
-// measure luminosity and steer RTC to follow the daylight to compensate drift for years
-// night is defined by level < 30/256
-// middle of night is middle of 20 consecutive matching (delta<2h) blacks of duration >= 6 hours.
-// night is hours between 12am and 6am. Put middle of night at 3am.
-// assume drift is linear
-
-// measure luminosity TBD
+// You might measure luminosity and steer RTC to follow the daylight to compensate drift for years
+// your code here
+// Will be called every "wakeupEvery"
+// but I think that 20ppm is enough : only 1.75 hours shift in 10 years... OK.
+// 24h*365.25*10*20e-6 = 1.75h
 void hourStep(void)
 {
 		ledOn();
@@ -181,57 +86,23 @@ void hourStep(void)
 }
 
 //Run for 
+
+#define SECONDS_BEATING_HEART  (3600*26)
+// beating heart for 26 hours :  3600*26
+
 void saintValentin(void)
 {
-	for (int i=0;i<10 /*3600*(24-2)*/;i++)
+	for (int i=0;i<SECONDS_BEATING_HEART ;i++)
 		heartBeatOneSecond();
 }
 
-uint8_t g_saintValentin = 0;
-uint8_t g_wakeUp = 0;
+uint8_t g_saintValentin;
+uint8_t g_wakeUp;
 
-uint8_t WakeUp_AlarmA_Str[30] = "18h00m00s06w02m17d18y";
-
-int waitConfigSerial(uint8_t *cfgStr)
-{
-	int cnt = 0;
-	int toggle = 0;
-	HAL_StatusTypeDef result;
-	uint8_t connect[]="\r\nPlease send my time\r\n";
-	int timeoutcount = 0;
-	
-	HAL_Delay(3000);
-	heartBeatOneSecond();
-	HAL_UART_Transmit(&huart2,connect,sizeof(connect)-1,HAL_MAX_DELAY);
-	
-	while(cnt<21)
-	{
-		result = HAL_UART_Receive(&huart2,&cfgStr[cnt],1,10000); // Blocking
-		if (result == HAL_TIMEOUT)
-		{
-			timeoutcount++;
-			if (timeoutcount==10)
-			{
-				ledOff();
-				return 0;
-			}
-			heartBeatOneSecond();
-			HAL_UART_Transmit(&huart2,connect,sizeof(connect)-1,HAL_MAX_DELAY);
-		}
-		else if (cfgStr[cnt]!='$')
-		{
-			cnt++;
-			if (toggle)
-				ledOn();
-			else 
-				ledOff();
-			toggle = 1-toggle;
-		}
-	}
-	HAL_Delay(1000);
-	ledOff();
-	return 1;
-}
+// Default config that will be written if nothing sent after 100secs on the serial port
+// Useful in dev phase, we don't need to have a complex setup 
+// But when on battery 3V, will need to use the serial port 
+uint8_t clock_time[64] = "22h37m00s04w03m08d18y00060wkup";
 
 /* USER CODE END 0 */
 
@@ -244,6 +115,7 @@ int main(void)
 {
   /* USER CODE BEGIN 1 */
 	uint32_t tickstart;
+	RTC_DateTypeDef sDate;
   /* USER CODE END 1 */
 
   /* MCU Configuration----------------------------------------------------------*/
@@ -264,10 +136,12 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-//  MX_ADC_Init();
-//  MX_USART2_UART_Init();
+	
   /* USER CODE BEGIN 2 */
 
+	g_saintValentin = 0;
+	g_wakeUp = 0;
+	
 	hrtc.Instance = RTC;
 
 	if (__HAL_RTC_WAKEUPTIMER_GET_FLAG(&hrtc,RTC_ISR_WUTF)) // by WAKE UP
@@ -315,13 +189,16 @@ int main(void)
 		/* Enable the write protection for RTC registers */
 		__HAL_RTC_WRITEPROTECTION_ENABLE(&hrtc);
 
-		g_saintValentin = 1;
+		HAL_RTC_GetDate(&hrtc, &sDate, RTC_FORMAT_BIN);
+		
+		if (sDate.Month==RTC_MONTH_FEBRUARY)
+			g_saintValentin = 1;
 	}
 
 	if (PWR->CSR & PWR_CSR_SBF) // We come back from standby
 	{
-		PWR->CR |= PWR_CR_CSBF; // reset bit
-		if (g_wakeUp)
+		PWR->CR |= PWR_CR_CSBF; // reset bit. 
+		if (g_wakeUp) // Put a breakpoint here and reset to debug the setup code 
 		{
 			hourStep();
 		}
@@ -330,13 +207,10 @@ int main(void)
 			saintValentin();
 		}
 	}
-	else // this is a power on startup
+	else // this is a power on startup : setup here
 	{
-		// WakeUp every 
-		// Alarm every 
-		heartBeatOneSecond();
-		MX_USART2_UART_Init();
-		waitConfigSerial(WakeUp_AlarmA_Str);
+		heartBeatOneSecond();  
+		getConfigByComPort(clock_time);
 		
 		__HAL_RTC_WRITEPROTECTION_DISABLE(&hrtc);
 		__HAL_RTC_WAKEUPTIMER_DISABLE(&hrtc);
@@ -345,8 +219,8 @@ int main(void)
 
 		heartBeatOneSecond();
 		heartBeatOneSecond();
-		RTC_Init_Time_and_Date(WakeUp_AlarmA_Str);
-		RTC_Set_Enable_WakeUp_AlarmA();
+		RTC_Init_Time_and_Date(clock_time);
+		RTC_Set_Enable_WakeUp_AlarmA(clock_time);
 	}
 
 	g_saintValentin = 0;
@@ -357,15 +231,17 @@ int main(void)
 
 	HAL_PWREx_EnableFastWakeUp();
 	HAL_PWREx_EnableUltraLowPower();
-	HAL_PWR_EnterSTANDBYMode();	
-		
+	HAL_PWR_EnterSTANDBYMode();	 // on exit from standby, the CPU will reset
+	// that's all folks
+	
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-		saintValentin();
+		// Well, we never go here.
+		
   /* USER CODE END WHILE */
 
   /* USER CODE BEGIN 3 */
@@ -560,7 +436,7 @@ void MX_RTC_Init(void)
 }
 
 /* USART2 init function */
-static void MX_USART2_UART_Init(void)
+void MX_USART2_UART_Init(void)
 {
 
   huart2.Instance = USART2;

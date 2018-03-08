@@ -126,6 +126,7 @@ void SysTick_Handler(void)
 
 /* USER CODE BEGIN 1 */
 
+// This code is not used anymore, because I use the standby mode (not the stop mode)
 extern uint8_t g_saintValentin;
 extern uint8_t g_wakeUp;
 
