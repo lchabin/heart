@@ -102,7 +102,8 @@ uint8_t g_wakeUp;
 // Default config that will be written if nothing sent after 100secs on the serial port
 // Useful in dev phase, we don't need to have a complex setup 
 // But when on battery 3V, will need to use the serial port 
-uint8_t clock_time[64] = "22h37m00s04w03m08d18y00060wkup";
+uint8_t clock_time[31] = "22h37m00s04w03m08d18y00060wkup"; // 30+1 for a 0x00 terminating char inserted by the compilator, but not required to have one
+int clock_time_stringlength = sizeof(clock_time)-1; // 30 is the good number
 
 /* USER CODE END 0 */
 
@@ -210,7 +211,7 @@ int main(void)
 	else // this is a power on startup : setup here
 	{
 		heartBeatOneSecond();  
-		getConfigByComPort(clock_time);
+		getConfigByComPort(clock_time,clock_time_stringlength);
 		
 		__HAL_RTC_WRITEPROTECTION_DISABLE(&hrtc);
 		__HAL_RTC_WAKEUPTIMER_DISABLE(&hrtc);

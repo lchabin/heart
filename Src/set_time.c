@@ -6,7 +6,7 @@ void MX_USART2_UART_Init(void);
 extern UART_HandleTypeDef huart2;
 extern RTC_HandleTypeDef hrtc;
 
-int getConfigByComPort(uint8_t *cfgStr)
+int getConfigByComPort(uint8_t *cfgStr, int clock_time_stringlength)
 {
 	int cnt = 0;
 	int toggle = 0;
@@ -22,7 +22,7 @@ int getConfigByComPort(uint8_t *cfgStr)
 	heartBeatOneSecond();
 	HAL_UART_Transmit(&huart2,connect,sizeof(connect)-1,HAL_MAX_DELAY);
 	
-	while(cnt<21)
+	while(cnt<clock_time_stringlength)
 	{
 		result = HAL_UART_Receive(&huart2,&cfgStr[cnt],1,10000); // Blocking
 		if (result == HAL_TIMEOUT)
