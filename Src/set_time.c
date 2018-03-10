@@ -81,7 +81,7 @@ int getConfigByComPort(uint8_t *cfgStr, int clock_time_stringlength)
 		if (result == HAL_TIMEOUT) // display menu, up to 10 times
 		{
 			timeoutcount++;
-			if (timeoutcount==10)
+			if (timeoutcount==100)
 			{
 				break;
 			}
@@ -159,7 +159,8 @@ uint16_t get16bits(uint8_t *str, int i)
 	return total;
 }
 
-/* RTC init function */
+/* RTC init function for setting the real clock time */
+// String format expected
 // "18h00m00s06w02m17d18y00000wup" 29+130 bytes
 //  hour, minute, second, weekday, month, day of the month, year, wakeupEvery in seconds from 1 to 65535, 01w == monday
 enum time_date_fields {TD_HOUR, TD_MIN, TD_SEC, TD_WEEKDAY, TD_MONTH, TD_DAY, TD_YEAR, TD_WAKE_UP_DELAY, TD_FILLER};
@@ -208,8 +209,10 @@ void RTC_Init_Time_and_Date(uint8_t td[30])
 
 
 // ALARMA every Valentine's Day !
+// ALARMB everyday at midnight to track clock shift over time, and be sure it is still alive after month and years...
+// + WakeUp alarm if delay requested non 0
 
-void RTC_Set_Enable_WakeUp_AlarmA(uint8_t td[30])
+void RTC_Set_Enable_WakeUp_AlarmAB(uint8_t td[30])
 {
   RTC_AlarmTypeDef sAlarm;
 	uint16_t wakeupEvery;
@@ -220,9 +223,9 @@ void RTC_Set_Enable_WakeUp_AlarmA(uint8_t td[30])
 	// Mask setting is touchy. The way it is here ensures that the alarm does not trigger again while we process it. At least for this application
 	
 #ifdef TESTING
-  sAlarm.AlarmDateWeekDay = 0x09;  	
-  sAlarm.AlarmTime.Hours = 0x21;
-  sAlarm.AlarmTime.Minutes = 0x29;
+  sAlarm.AlarmDateWeekDay = 0x10;  	
+  sAlarm.AlarmTime.Hours = 0x00;
+  sAlarm.AlarmTime.Minutes = 0x02;
   sAlarm.AlarmMask = 0; // RTC_ALARMMASK_DATEWEEKDAY|RTC_ALARMMASK_HOURS|RTC_ALARMMASK_MINUTES|RTC_ALARMMASK_SECONDS
   sAlarm.AlarmTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
 #else	
@@ -242,21 +245,32 @@ void RTC_Set_Enable_WakeUp_AlarmA(uint8_t td[30])
   sAlarm.Alarm = RTC_ALARM_A;
   if (HAL_RTC_SetAlarm(&hrtc, &sAlarm, RTC_FORMAT_BCD) != HAL_OK)
 		crash(6);
-	
+
+
+    /**Enable the Alarm B 
+    */
+  sAlarm.AlarmTime.Hours = 0x0;
+  sAlarm.AlarmTime.Minutes = 0x00;
+  sAlarm.AlarmMask = RTC_ALARMMASK_DATEWEEKDAY; // Every Day at midnight
+  sAlarm.Alarm = RTC_ALARM_B;
+  if (HAL_RTC_SetAlarm(&hrtc, &sAlarm, RTC_FORMAT_BCD) != HAL_OK)
+		crash(7);
+
 	wakeupEvery = get16bits(td,TD_WAKE_UP_DELAY);
 	
 	//Enable the repeated WakeUp 
 	if (wakeupEvery)
 	{
 		if (HAL_RTCEx_SetWakeUpTimer(&hrtc, wakeupEvery-1, RTC_WAKEUPCLOCK_CK_SPRE_16BITS) != HAL_OK)
-			crash(7);
+			crash(8);
 	}
 	else
 		HAL_RTCEx_DeactivateWakeUpTimer(&hrtc);
 	
-	// Interrupt Enable (required ?)
+	// Interrupt Enable (required ? YES)
 	__HAL_RTC_WRITEPROTECTION_DISABLE(&hrtc);
 	RTC->CR |= RTC_CR_ALRAIE;
+	RTC->CR |= RTC_CR_ALRBIE;
 	if (wakeupEvery)
 		RTC->CR |= RTC_CR_WUTIE; 
 	else

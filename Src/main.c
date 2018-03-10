@@ -74,11 +74,16 @@ void MX_USART2_UART_Init(void);
 // Will be called every "wakeupEvery"
 // but I think that 20ppm is enough : only 1.75 hours shift in 10 years... OK.
 // 24h*365.25*10*20e-6 = 1.75h
-void hourStep(void)
+void wakeupStep(void)
 {
 		ledOn();
 		HAL_Delay(150);
 		ledOff();	
+}
+
+void daylyStep(void)
+{
+		ledPulse();
 }
 
 // TESTING can be defined in the project properties.
@@ -102,11 +107,12 @@ void saintValentin(void)
 
 uint8_t g_saintValentin;
 uint8_t g_wakeUp;
+uint8_t g_dailyAlarm;
 
 // Default config that will be written if nothing sent after 100secs on the serial port
 // Useful in dev phase, we don't need to have a complex setup 
 // But when on battery 3V, will need to use the serial port 
-uint8_t clock_time[31] = "21h24m00s05w03m09d18y00060wkup"; // 30+1 for a 0x00 terminating char inserted by the compilator, but not required to have one
+uint8_t clock_time[31] = "23h59m00s06w03m09d18y00120wkup"; // 30+1 for a 0x00 terminating char inserted by the compilator, but not required to have one
 int clock_time_stringlength = sizeof(clock_time)-1; // 30 is the good number
 
 /* USER CODE END 0 */
@@ -131,7 +137,7 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
-
+// WE DONT CALL MX_RTC_Init(), we run our own code
   /* USER CODE END Init */
 
   /* Configure the system clock */
@@ -165,6 +171,7 @@ int main(void)
   {
 		g_saintValentin = false; // XXXXXX  Put a breakpoint here, debug, run, breakpoint, reset, remove breakpoint then run to debug the setup code 
 		g_wakeUp = false;
+		g_dailyAlarm = false;
 
 		// Identify the cause of Interrupt, and reset int flag 
 		
@@ -235,20 +242,48 @@ the data is correct. Otherwise a third read access must be done.
 				g_saintValentin = true;
 		}
 
+		// Identify the cause of Interrupt, and reset int flag 
+		
+		if (__HAL_RTC_ALARM_GET_FLAG(&hrtc,RTC_ISR_ALRBF)) // By ALARM B
+		{
+				/* Disable the write protection for RTC registers */
+				__HAL_RTC_WRITEPROTECTION_DISABLE(&hrtc);
+				__HAL_RTC_ALARMB_DISABLE(&hrtc);
+				__HAL_RTC_ALARM_CLEAR_FLAG(&hrtc, RTC_FLAG_ALRBF);
+				tickstart = HAL_GetTick();
+				/* Wait till RTC ALRBWF flag is set and if Time out is reached exit */
+				while(__HAL_RTC_ALARM_GET_FLAG(&hrtc, RTC_FLAG_ALRBWF) == RESET)
+				{
+					if((HAL_GetTick() - tickstart ) > RTC_TIMEOUT_VALUE)
+					{
+						/* Enable the write protection for RTC registers */
+						__HAL_RTC_WRITEPROTECTION_ENABLE(&hrtc);					
+						crash(9);
+					}
+				}
+				__HAL_RTC_ALARMB_ENABLE(&hrtc);
+				/* Enable the write protection for RTC registers */
+				__HAL_RTC_WRITEPROTECTION_ENABLE(&hrtc);
+
+				g_dailyAlarm = true;
+		}
+		
+		
+		
 		if (outOfStandby) // We come back from standby
 		{
 			// Process interrupts
 			if (g_wakeUp)
 			{
-				hourStep();
+				wakeupStep();
+			}
+			if (g_dailyAlarm)
+			{
+				daylyStep();
 			}
 			if (g_saintValentin)
 			{
 				saintValentin();
-
-				// here we have chosen to postpone reset of the flag after prosessing, so that we don't trigger twice in a row
-				
-
 			}
 		}
 		else // this is a power on startup : setup code : get time by serial port or set it to some default value (for tests)
@@ -264,7 +299,7 @@ the data is correct. Otherwise a third read access must be done.
 
 			pulseTrain3s();
 			RTC_Init_Time_and_Date(clock_time);
-			RTC_Set_Enable_WakeUp_AlarmA(clock_time);
+			RTC_Set_Enable_WakeUp_AlarmAB(clock_time);
 		}
 /*
 	DBGMCU->CR |= DBGMCU_CR_DBG_STOP;
@@ -311,7 +346,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.LSEState = RCC_LSE_ON;
   RCC_OscInitStruct.MSIState = RCC_MSI_ON;
   RCC_OscInitStruct.MSICalibrationValue = 0;
-  RCC_OscInitStruct.MSIClockRange = RCC_MSIRANGE_4;
+  RCC_OscInitStruct.MSIClockRange = RCC_MSIRANGE_1;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
@@ -323,7 +358,7 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_MSI;
-  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV8;
+  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
@@ -379,7 +414,7 @@ void MX_RTC_Init(void)
 
     /**Initialize RTC and set the Time and Date 
     */
-  sTime.Hours = 0x18;
+  sTime.Hours = 0x12;
   sTime.Minutes = 0x0;
   sTime.Seconds = 0x0;
   sTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
@@ -390,8 +425,8 @@ void MX_RTC_Init(void)
   }
 
   sDate.WeekDay = RTC_WEEKDAY_SATURDAY;
-  sDate.Month = RTC_MONTH_FEBRUARY;
-  sDate.Date = 0x17;
+  sDate.Month = RTC_MONTH_MARCH;
+  sDate.Date = 0x10;
   sDate.Year = 0x18;
 
   if (HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BCD) != HAL_OK)
@@ -402,17 +437,27 @@ void MX_RTC_Init(void)
     /**Enable the Alarm A 
     */
   sAlarm.AlarmTime.Hours = 0x6;
-  sAlarm.AlarmTime.Minutes = 0x2;
+  sAlarm.AlarmTime.Minutes = 0x0;
   sAlarm.AlarmTime.Seconds = 0x0;
   sAlarm.AlarmTime.SubSeconds = 0x0;
   sAlarm.AlarmTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
   sAlarm.AlarmTime.StoreOperation = RTC_STOREOPERATION_RESET;
-  sAlarm.AlarmMask = RTC_ALARMMASK_DATEWEEKDAY|RTC_ALARMMASK_HOURS
-                              |RTC_ALARMMASK_SECONDS;
+  sAlarm.AlarmMask = RTC_ALARMMASK_NONE;
   sAlarm.AlarmSubSecondMask = RTC_ALARMSUBSECONDMASK_ALL;
   sAlarm.AlarmDateWeekDaySel = RTC_ALARMDATEWEEKDAYSEL_DATE;
   sAlarm.AlarmDateWeekDay = 0x14;
   sAlarm.Alarm = RTC_ALARM_A;
+  if (HAL_RTC_SetAlarm(&hrtc, &sAlarm, RTC_FORMAT_BCD) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
+    /**Enable the Alarm B 
+    */
+  sAlarm.AlarmTime.Hours = 0x0;
+  sAlarm.AlarmMask = RTC_ALARMMASK_DATEWEEKDAY;
+  sAlarm.AlarmDateWeekDay = 0x1;
+  sAlarm.Alarm = RTC_ALARM_B;
   if (HAL_RTC_SetAlarm(&hrtc, &sAlarm, RTC_FORMAT_BCD) != HAL_OK)
   {
     _Error_Handler(__FILE__, __LINE__);
@@ -466,6 +511,7 @@ static void MX_GPIO_Init(void)
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
