@@ -49,8 +49,10 @@ void crash(uint8_t crash_code)
 	}
 }
 
-
 // brightness 0..20, duration 20ms
+// Current when Led is ON on = c A
+// Coulomb consummed c*b/20*0.02 Q = c*b*0.001Q
+
 void ledPWM(uint8_t brightness)
 {
 	ledOn();
@@ -61,6 +63,8 @@ void ledPWM(uint8_t brightness)
 
 
 // 200 ms
+// Coulomb Consummed = Sum(c*b*0.001) for b=20 to 2
+// Coulomb Consummed = c*0.001*Sum(b) for b=20 to 2 = 110*c*0.001 = 0.11*c Q
 void ledPulse(void)
 {
 	int i;
@@ -73,6 +77,10 @@ void ledPulse(void)
 	}
 }
 
+// Q Consummed = 2*0.11*c = 0.22*c Coulomb
+// Mean Current = Q/T = 0.22*c/1 = 0.22*c
+// c = 120mA (DLA/6SRD - KingBright Red LED) with 50 ohms resistors, powered 3V
+// Mean current = 26.4mA 
 void heartBeatOneSecond(void)
 {
 	ledPulse(); // 200ms
@@ -81,4 +89,15 @@ void heartBeatOneSecond(void)
 	HAL_Delay(500);
 }
 
-
+void pulseTrain3s(void)
+{
+	int i;
+	
+	for (i=0;i<50;i++)
+	{
+		ledOn();
+		HAL_Delay(40);
+		ledOff();
+		HAL_Delay(20);
+	}
+}

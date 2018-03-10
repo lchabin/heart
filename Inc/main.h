@@ -49,10 +49,6 @@
 
 /* Private define ------------------------------------------------------------*/
 
-#define PHOTODIODE_Pin GPIO_PIN_1
-#define PHOTODIODE_GPIO_Port GPIOA
-#define PHOTOPWR_Pin GPIO_PIN_1
-#define PHOTOPWR_GPIO_Port GPIOB
 #define LED_Pin GPIO_PIN_8
 #define LED_GPIO_Port GPIOA
 
@@ -64,7 +60,8 @@
 /* #define USE_FULL_ASSERT    1U */
 
 /* USER CODE BEGIN Private defines */
-
+#define true 1
+#define false 0
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus

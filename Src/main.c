@@ -46,8 +46,6 @@
 /* USER CODE END Includes */
 
 /* Private variables ---------------------------------------------------------*/
-ADC_HandleTypeDef hadc;
-
 RTC_HandleTypeDef hrtc;
 
 UART_HandleTypeDef huart2;
@@ -60,8 +58,8 @@ UART_HandleTypeDef huart2;
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
-void MX_ADC_Init(void);
 void MX_RTC_Init(void);
+void MX_USART2_UART_Init(void);
 
 /* USER CODE BEGIN PFP */
 /* Private function prototypes -----------------------------------------------*/
@@ -70,10 +68,8 @@ void MX_RTC_Init(void);
 
 /* USER CODE BEGIN 0 */
 
-
-
 // Even with a quartz 32.768Khz, the clock will drift a lot over the years
-// You might measure luminosity and steer RTC to follow the daylight to compensate drift for years
+// You might measure luminosity (with some electronics and code) and steer RTC to follow the daylight to compensate drift for years
 // your code here
 // Will be called every "wakeupEvery"
 // but I think that 20ppm is enough : only 1.75 hours shift in 10 years... OK.
@@ -85,10 +81,18 @@ void hourStep(void)
 		ledOff();	
 }
 
-//Run for 
-
-#define SECONDS_BEATING_HEART  (3600*26)
-// beating heart for 26 hours :  3600*26
+// TESTING can be defined in the project properties.
+// Remove it when done.
+// Run Beating Heart for ... seconds
+#ifdef TESTING
+#define SECONDS_BEATING_HEART  120 
+#define RTC_MONTH_SELECTED RTC_MONTH_MARCH
+#else
+// beating heart for 18 hours :  3600*18
+#define SECONDS_BEATING_HEART  (3600*18)
+// saint valentin is in february
+#define RTC_MONTH_SELECTED RTC_MONTH_FEBRUARY
+#endif
 
 void saintValentin(void)
 {
@@ -102,7 +106,7 @@ uint8_t g_wakeUp;
 // Default config that will be written if nothing sent after 100secs on the serial port
 // Useful in dev phase, we don't need to have a complex setup 
 // But when on battery 3V, will need to use the serial port 
-uint8_t clock_time[31] = "22h37m00s04w03m08d18y00060wkup"; // 30+1 for a 0x00 terminating char inserted by the compilator, but not required to have one
+uint8_t clock_time[31] = "21h24m00s05w03m09d18y00060wkup"; // 30+1 for a 0x00 terminating char inserted by the compilator, but not required to have one
 int clock_time_stringlength = sizeof(clock_time)-1; // 30 is the good number
 
 /* USER CODE END 0 */
@@ -116,7 +120,9 @@ int main(void)
 {
   /* USER CODE BEGIN 1 */
 	uint32_t tickstart;
-	RTC_DateTypeDef sDate;
+	RTC_DateTypeDef sDate1;
+	RTC_DateTypeDef sDate2;
+	uint8_t outOfStandby;
   /* USER CODE END 1 */
 
   /* MCU Configuration----------------------------------------------------------*/
@@ -137,111 +143,140 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-	
   /* USER CODE BEGIN 2 */
-
-	g_saintValentin = 0;
-	g_wakeUp = 0;
+	
+	HAL_PWREx_EnableLowPowerRunMode();
 	
 	hrtc.Instance = RTC;
-
-	if (__HAL_RTC_WAKEUPTIMER_GET_FLAG(&hrtc,RTC_ISR_WUTF)) // by WAKE UP
-	{
-		/* Disable the write protection for RTC registers */
-		__HAL_RTC_WRITEPROTECTION_DISABLE(&hrtc);
-		__HAL_RTC_WAKEUPTIMER_DISABLE(&hrtc);
-		__HAL_RTC_WAKEUPTIMER_CLEAR_FLAG(&hrtc, RTC_FLAG_WUTF);
-		tickstart = HAL_GetTick();
-		/* Wait till RTC ALRAWF flag is set and if Time out is reached exit */
-		while(__HAL_RTC_WAKEUPTIMER_GET_FLAG(&hrtc, RTC_ISR_WUTWF) == RESET)
-		{
-			if((HAL_GetTick() - tickstart ) > RTC_TIMEOUT_VALUE)
-			{
-				/* Enable the write protection for RTC registers */
-				__HAL_RTC_WRITEPROTECTION_ENABLE(&hrtc);
-				crash(1);
-			}
-		}
-		__HAL_RTC_WAKEUPTIMER_ENABLE(&hrtc);
-		/* Enable the write protection for RTC registers */
-		__HAL_RTC_WRITEPROTECTION_ENABLE(&hrtc);
-		
-		g_wakeUp = 1;
-	}
 	
-	if (__HAL_RTC_ALARM_GET_FLAG(&hrtc,RTC_ISR_ALRAF)) // By ALARM A
+	if (PWR->CSR & PWR_CSR_SBF) 
 	{
-		/* Disable the write protection for RTC registers */
-		__HAL_RTC_WRITEPROTECTION_DISABLE(&hrtc);
-		__HAL_RTC_ALARMA_DISABLE(&hrtc);
-		__HAL_RTC_ALARM_CLEAR_FLAG(&hrtc, RTC_FLAG_ALRAF);
-		tickstart = HAL_GetTick();
-		/* Wait till RTC ALRAWF flag is set and if Time out is reached exit */
-		while(__HAL_RTC_ALARM_GET_FLAG(&hrtc, RTC_FLAG_ALRAWF) == RESET)
-		{
-			if((HAL_GetTick() - tickstart ) > RTC_TIMEOUT_VALUE)
-			{
-				/* Enable the write protection for RTC registers */
-				__HAL_RTC_WRITEPROTECTION_ENABLE(&hrtc);					
-				crash(2);
-			}
-		}
-		__HAL_RTC_ALARMA_ENABLE(&hrtc);
-		/* Enable the write protection for RTC registers */
-		__HAL_RTC_WRITEPROTECTION_ENABLE(&hrtc);
-
-		HAL_RTC_GetDate(&hrtc, &sDate, RTC_FORMAT_BIN);
-		
-		if (sDate.Month==RTC_MONTH_FEBRUARY)
-			g_saintValentin = 1;
+		outOfStandby = true;	// We come back from standby
+		PWR->CR |= PWR_CR_CSBF; // reset bit.  
 	}
+	else
+		outOfStandby = false;
 
-	if (PWR->CSR & PWR_CSR_SBF) // We come back from standby
-	{
-		PWR->CR |= PWR_CR_CSBF; // reset bit. 
-		if (g_wakeUp) // Put a breakpoint here and reset to debug the setup code 
-		{
-			hourStep();
-		}
-		if (g_saintValentin)
-		{
-			saintValentin();
-		}
-	}
-	else // this is a power on startup : setup here
-	{
-		heartBeatOneSecond();  
-		getConfigByComPort(clock_time,clock_time_stringlength);
-		
-		__HAL_RTC_WRITEPROTECTION_DISABLE(&hrtc);
-		__HAL_RTC_WAKEUPTIMER_DISABLE(&hrtc);
-		__HAL_RTC_ALARMA_DISABLE(&hrtc);
-		__HAL_RTC_WRITEPROTECTION_ENABLE(&hrtc);
-
-		heartBeatOneSecond();
-		heartBeatOneSecond();
-		RTC_Init_Time_and_Date(clock_time);
-		RTC_Set_Enable_WakeUp_AlarmA(clock_time);
-	}
-
-	g_saintValentin = 0;
-	g_wakeUp = 0;
-	
-	DBGMCU->CR |= DBGMCU_CR_DBG_STOP;
-	DBGMCU->CR |= DBGMCU_CR_DBG_STANDBY;
-
-	HAL_PWREx_EnableFastWakeUp();
-	HAL_PWREx_EnableUltraLowPower();
-	HAL_PWR_EnterSTANDBYMode();	 // on exit from standby, the CPU will reset
-	// that's all folks
-	
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  while (1)
+  while (1) 
   {
-		// Well, we never go here.
+		g_saintValentin = false; // XXXXXX  Put a breakpoint here, debug, run, breakpoint, reset, remove breakpoint then run to debug the setup code 
+		g_wakeUp = false;
+
+		// Identify the cause of Interrupt, and reset int flag 
+		
+		if (__HAL_RTC_WAKEUPTIMER_GET_FLAG(&hrtc,RTC_ISR_WUTF)) // by WAKE UP
+		{
+			/* Disable the write protection for RTC registers */
+			__HAL_RTC_WRITEPROTECTION_DISABLE(&hrtc);
+			__HAL_RTC_WAKEUPTIMER_DISABLE(&hrtc);
+			__HAL_RTC_WAKEUPTIMER_CLEAR_FLAG(&hrtc, RTC_FLAG_WUTF);
+			tickstart = HAL_GetTick();
+			/* Wait till RTC ALRAWF flag is set and if Time out is reached exit */
+			while(__HAL_RTC_WAKEUPTIMER_GET_FLAG(&hrtc, RTC_ISR_WUTWF) == RESET)
+			{
+				if((HAL_GetTick() - tickstart ) > RTC_TIMEOUT_VALUE)
+				{
+					/* Enable the write protection for RTC registers */
+					__HAL_RTC_WRITEPROTECTION_ENABLE(&hrtc);
+					crash(1);
+				}
+			}
+			__HAL_RTC_WAKEUPTIMER_ENABLE(&hrtc);
+			/* Enable the write protection for RTC registers */
+			__HAL_RTC_WRITEPROTECTION_ENABLE(&hrtc);
+			
+			g_wakeUp = true;
+		}
+
+		// Identify the cause of Interrupt, and reset int flag 
+		
+		if (__HAL_RTC_ALARM_GET_FLAG(&hrtc,RTC_ISR_ALRAF)) // By ALARM A
+		{
+				/* Disable the write protection for RTC registers */
+				__HAL_RTC_WRITEPROTECTION_DISABLE(&hrtc);
+				__HAL_RTC_ALARMA_DISABLE(&hrtc);
+				__HAL_RTC_ALARM_CLEAR_FLAG(&hrtc, RTC_FLAG_ALRAF);
+				tickstart = HAL_GetTick();
+				/* Wait till RTC ALRAWF flag is set and if Time out is reached exit */
+				while(__HAL_RTC_ALARM_GET_FLAG(&hrtc, RTC_FLAG_ALRAWF) == RESET)
+				{
+					if((HAL_GetTick() - tickstart ) > RTC_TIMEOUT_VALUE)
+					{
+						/* Enable the write protection for RTC registers */
+						__HAL_RTC_WRITEPROTECTION_ENABLE(&hrtc);					
+						crash(2);
+					}
+				}
+				__HAL_RTC_ALARMA_ENABLE(&hrtc);
+				/* Enable the write protection for RTC registers */
+				__HAL_RTC_WRITEPROTECTION_ENABLE(&hrtc);
+
+// APB1 Clock = 131Khz < 7*32.768Khz
+/*
+To be able to read the RTC calendar register when the APB1 clock frequency is less than
+seven times the RTC clock frequency (7*RTCLCK), the software must read the calendar
+time and date registers twice.
+If the second read of the RTC_TR gives the same result as the first read, this ensures that
+the data is correct. Otherwise a third read access must be done.
+*/		
+				
+			HAL_RTC_GetDate(&hrtc, &sDate1, RTC_FORMAT_BCD);
+			HAL_RTC_GetDate(&hrtc, &sDate2, RTC_FORMAT_BCD);
+			if (sDate1.Month!=sDate2.Month)
+			{
+				HAL_RTC_GetDate(&hrtc, &sDate1, RTC_FORMAT_BCD);
+			}
+				
+			if (sDate1.Month==RTC_MONTH_SELECTED)
+				g_saintValentin = true;
+		}
+
+		if (outOfStandby) // We come back from standby
+		{
+			// Process interrupts
+			if (g_wakeUp)
+			{
+				hourStep();
+			}
+			if (g_saintValentin)
+			{
+				saintValentin();
+
+				// here we have chosen to postpone reset of the flag after prosessing, so that we don't trigger twice in a row
+				
+
+			}
+		}
+		else // this is a power on startup : setup code : get time by serial port or set it to some default value (for tests)
+		{ 
+			
+			pulseTrain3s();  
+			getConfigByComPort(clock_time,clock_time_stringlength);
+			
+			__HAL_RTC_WRITEPROTECTION_DISABLE(&hrtc);
+			__HAL_RTC_WAKEUPTIMER_DISABLE(&hrtc);
+			__HAL_RTC_ALARMA_DISABLE(&hrtc);
+			__HAL_RTC_WRITEPROTECTION_ENABLE(&hrtc);
+
+			pulseTrain3s();
+			RTC_Init_Time_and_Date(clock_time);
+			RTC_Set_Enable_WakeUp_AlarmA(clock_time);
+		}
+/*
+	DBGMCU->CR |= DBGMCU_CR_DBG_STOP;
+	DBGMCU->CR |= DBGMCU_CR_DBG_STANDBY;
+*/
+	
+	HAL_PWREx_EnableFastWakeUp();
+	HAL_PWREx_EnableUltraLowPower();
+	HAL_PWR_EnterSTANDBYMode();	 // on exit from standby, the CPU will reset
+	// but if a new interrupt is again pending, in that case we don't enter standby mode...
+	// this while loop saves us, we process again that new interrupt. At least we should reset the flag
+	// this can happen if during a long saintValentin() call, the wakeup timer triggers.
 		
   /* USER CODE END WHILE */
 
@@ -264,7 +299,7 @@ void SystemClock_Config(void)
 
     /**Configure the main internal regulator output voltage 
     */
-  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
+  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE2);
 
     /**Configure LSE Drive Capability 
     */
@@ -288,7 +323,7 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_MSI;
-  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV8;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
@@ -315,47 +350,6 @@ void SystemClock_Config(void)
 
   /* SysTick_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(SysTick_IRQn, 0, 0);
-}
-
-/* ADC init function */
-void MX_ADC_Init(void)
-{
-
-  ADC_ChannelConfTypeDef sConfig;
-
-    /**Configure the global features of the ADC (Clock, Resolution, Data Alignment and number of conversion) 
-    */
-  hadc.Instance = ADC1;
-  hadc.Init.OversamplingMode = DISABLE;
-  hadc.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV1;
-  hadc.Init.Resolution = ADC_RESOLUTION_8B;
-  hadc.Init.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
-  hadc.Init.ScanConvMode = ADC_SCAN_DIRECTION_FORWARD;
-  hadc.Init.DataAlign = ADC_DATAALIGN_RIGHT;
-  hadc.Init.ContinuousConvMode = DISABLE;
-  hadc.Init.DiscontinuousConvMode = DISABLE;
-  hadc.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
-  hadc.Init.ExternalTrigConv = ADC_SOFTWARE_START;
-  hadc.Init.DMAContinuousRequests = DISABLE;
-  hadc.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
-  hadc.Init.Overrun = ADC_OVR_DATA_PRESERVED;
-  hadc.Init.LowPowerAutoWait = DISABLE;
-  hadc.Init.LowPowerFrequencyMode = DISABLE;
-  hadc.Init.LowPowerAutoPowerOff = DISABLE;
-  if (HAL_ADC_Init(&hadc) != HAL_OK)
-  {
-    _Error_Handler(__FILE__, __LINE__);
-  }
-
-    /**Configure for the selected ADC regular channel to be converted. 
-    */
-  sConfig.Channel = ADC_CHANNEL_1;
-  sConfig.Rank = ADC_RANK_CHANNEL_NUMBER;
-  if (HAL_ADC_ConfigChannel(&hadc, &sConfig) != HAL_OK)
-  {
-    _Error_Handler(__FILE__, __LINE__);
-  }
-
 }
 
 /* RTC init function */
@@ -441,7 +435,7 @@ void MX_USART2_UART_Init(void)
 {
 
   huart2.Instance = USART2;
-  huart2.Init.BaudRate = 9600;
+  huart2.Init.BaudRate = 4800;
   huart2.Init.WordLength = UART_WORDLENGTH_8B;
   huart2.Init.StopBits = UART_STOPBITS_1;
   huart2.Init.Parity = UART_PARITY_NONE;
@@ -472,20 +466,9 @@ static void MX_GPIO_Init(void)
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
-  __HAL_RCC_GPIOB_CLK_ENABLE();
-
-  /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(PHOTOPWR_GPIO_Port, PHOTOPWR_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
-
-  /*Configure GPIO pin : PHOTOPWR_Pin */
-  GPIO_InitStruct.Pin = PHOTOPWR_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(PHOTOPWR_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : LED_Pin */
   GPIO_InitStruct.Pin = LED_Pin;

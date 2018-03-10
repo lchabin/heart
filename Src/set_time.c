@@ -6,58 +6,124 @@ void MX_USART2_UART_Init(void);
 extern UART_HandleTypeDef huart2;
 extern RTC_HandleTypeDef hrtc;
 
+#ifdef TESTING
+	uint8_t info[] = "\r\nYou are in debug mode\r\n";
+#else
+	uint8_t info[] = "\r\nYou are in final target mode\r\n";	
+#endif
+
+	uint8_t connect[]="\
+\r\n\r\nPlease write (or paste) the time and wake up delay. Don't use del,backspace because it is ignored\r\n\
+Example :\r\n$21h24m00s05w03m09d18y00060wkup\r\n\
+Format : hour, minute, second, weekday, month, day of the month, year, wakeupEvery in seconds from 1 to 65535 (0 for no wake up). 01w == monday\r\n";
+
+	uint8_t closure[] = "\r\nSetting time to $";
+	uint8_t candisconnect[]= "\r\nYou can now disconnect usb.";
+  uint8_t accepted[]="0123456789hmswdykup";
+	
+int valid(uint8_t c)
+{
+	int i;
+	
+	for (i=0;i<sizeof(accepted)-1;i++)
+	{
+		if (c==accepted[i])
+			return true;
+	}
+	return false;
+}
+	
 int getConfigByComPort(uint8_t *cfgStr, int clock_time_stringlength)
 {
 	int cnt = 0;
-	int toggle = 0;
 	HAL_StatusTypeDef result;
-	uint8_t connect[]="\r\nPlease send me the time and wake up delay. Example : $22h07m00s04w03m08d18y00060wkup\r\n";
+	int toggle = 0;
+	uint32_t startTick;
+	
 	// the first $ is for sync purposes. Needed, else, if you unplug now the usb connector, you will receive a garbage char that we should ignore
 	int timeoutcount = 0;
-	int synchronized = 0;
+	int synchronized = false;
 
 	MX_USART2_UART_Init();
+	
 	
 	HAL_Delay(3000);
 	heartBeatOneSecond();
 	HAL_UART_Transmit(&huart2,connect,sizeof(connect)-1,HAL_MAX_DELAY);
+	HAL_UART_Transmit(&huart2,info,sizeof(info)-1,HAL_MAX_DELAY);
 	
 	while(cnt<clock_time_stringlength)
 	{
-		result = HAL_UART_Receive(&huart2,&cfgStr[cnt],1,10000); // Blocking
-		if (result == HAL_TIMEOUT)
+		if (synchronized)
+		{
+//			result = HAL_UART_Receive(&huart2,&cfgStr[cnt],1,HAL_MAX_DELAY); // Too slow for a paste
+			while (!(huart2.Instance->ISR & USART_ISR_RXNE)); // Blocking, i wait for you.
+			cfgStr[cnt] = huart2.Instance->RDR;
+			result = HAL_OK;
+		}
+		else
+		{
+//			result = HAL_UART_Receive(&huart2,&cfgStr[cnt],1,10000); // Too slow for a paste
+			startTick = HAL_GetTick();
+			result = HAL_OK;
+			while (!(huart2.Instance->ISR & USART_ISR_RXNE))
+			{
+				if (HAL_GetTick()-startTick > 10000) // with time out.
+				{
+					result = HAL_TIMEOUT;
+					break;
+				}
+			};
+			if (result == HAL_OK)
+				cfgStr[cnt] = huart2.Instance->RDR;
+		}
+		
+		if (result == HAL_TIMEOUT) // display menu, up to 10 times
 		{
 			timeoutcount++;
 			if (timeoutcount==10)
 			{
-				ledOff();
-				return 0;
+				break;
 			}
 			heartBeatOneSecond();
 			HAL_UART_Transmit(&huart2,connect,sizeof(connect)-1,HAL_MAX_DELAY);
+			HAL_UART_Transmit(&huart2,info,sizeof(info)-1,HAL_MAX_DELAY);
 		}
 		else
 		{
-			if (!synchronized)
+			if (!synchronized) // require a '$' as first char
 			{
 				if (cfgStr[cnt]=='$')
-					synchronized = 1;
+				{
+					synchronized = true;
+					huart2.Instance->TDR = cfgStr[cnt]; // might loose some chars, best effort, even here cpu freq too low for a paste !
+//				HAL_UART_Transmit(&huart2,&cfgStr[cnt],1,HAL_MAX_DELAY); // ECHO (too slow, won't work if you paste)
+				}
 			}
-			else if (cfgStr[cnt]!='$')
+			else if (valid(cfgStr[cnt])) // accept only chars in our list
 			{
+				huart2.Instance->TDR = cfgStr[cnt]; // might loose some chars, best effort, even here cpu freq too low for a paste !
+//			HAL_UART_Transmit(&huart2,&cfgStr[cnt],1,HAL_MAX_DELAY); // ECHO (too slow, won't work if you paste)
 				cnt++;
+				toggle = 1-toggle;
 				if (toggle)
 					ledOn();
-				else 
+				else
 					ledOff();
-				toggle = 1-toggle;
 			}
 		}
 	}
-	HAL_Delay(1000);
-	ledOff();
 
-	return 1;
+	ledOff();
+	
+	HAL_UART_Transmit(&huart2,closure,sizeof(closure)-1,HAL_MAX_DELAY);
+	HAL_UART_Transmit(&huart2,cfgStr,clock_time_stringlength,HAL_MAX_DELAY);
+	HAL_UART_Transmit(&huart2,candisconnect,sizeof(candisconnect)-1,HAL_MAX_DELAY);
+
+	if (cnt<clock_time_stringlength)
+		return 0;
+	else
+		return 1;
 }
 
 
@@ -95,8 +161,7 @@ uint16_t get16bits(uint8_t *str, int i)
 
 /* RTC init function */
 // "18h00m00s06w02m17d18y00000wup" 29+130 bytes
-//  hour, minute, second, weekday, month, day of the month, year, wakeupEvery in seconds from 1 to 65535, 
-// 01w == monday
+//  hour, minute, second, weekday, month, day of the month, year, wakeupEvery in seconds from 1 to 65535, 01w == monday
 enum time_date_fields {TD_HOUR, TD_MIN, TD_SEC, TD_WEEKDAY, TD_MONTH, TD_DAY, TD_YEAR, TD_WAKE_UP_DELAY, TD_FILLER};
 	
 void RTC_Init_Time_and_Date(uint8_t td[30])
@@ -152,17 +217,28 @@ void RTC_Set_Enable_WakeUp_AlarmA(uint8_t td[30])
   // Enable the Alarm A, Saint Valentin. Will wake up every month on the 14th, so we will have to read to check we are in february
   // Since Month is not part of the comparison for the alarm (the RTC does not offer that), 
 	//   we will wake up every month on the 14th and we will need to check if we are in february
+	// Mask setting is touchy. The way it is here ensures that the alarm does not trigger again while we process it. At least for this application
 	
+#ifdef TESTING
+  sAlarm.AlarmDateWeekDay = 0x09;  	
+  sAlarm.AlarmTime.Hours = 0x21;
+  sAlarm.AlarmTime.Minutes = 0x29;
+  sAlarm.AlarmMask = 0; // RTC_ALARMMASK_DATEWEEKDAY|RTC_ALARMMASK_HOURS|RTC_ALARMMASK_MINUTES|RTC_ALARMMASK_SECONDS
+  sAlarm.AlarmTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
+#else	
+  sAlarm.AlarmDateWeekDay = 0x14;  // saint valentin is on the fourteenth
   sAlarm.AlarmTime.Hours = 0x06;
   sAlarm.AlarmTime.Minutes = 0x00;
+  sAlarm.AlarmMask = 0; // RTC_ALARMMASK_DATEWEEKDAY|RTC_ALARMMASK_HOURS|RTC_ALARMMASK_MINUTES|RTC_ALARMMASK_SECONDS
+  sAlarm.AlarmTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
+#endif
+
   sAlarm.AlarmTime.Seconds = 0x00;
   sAlarm.AlarmTime.SubSeconds = 0x00;
-  sAlarm.AlarmTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
   sAlarm.AlarmTime.StoreOperation = RTC_STOREOPERATION_RESET;
-  sAlarm.AlarmMask = RTC_ALARMMASK_MINUTES|RTC_ALARMMASK_SECONDS; // RTC_ALARMMASK_DATEWEEKDAY|RTC_ALARMMASK_HOURS 
-  sAlarm.AlarmSubSecondMask = RTC_ALARMSUBSECONDMASK_ALL;
+  sAlarm.AlarmSubSecondMask = 0; // RTC_ALARMSUBSECONDMASK_ALL
   sAlarm.AlarmDateWeekDaySel = RTC_ALARMDATEWEEKDAYSEL_DATE;
-  sAlarm.AlarmDateWeekDay = 0x14; //0x14;  
+
   sAlarm.Alarm = RTC_ALARM_A;
   if (HAL_RTC_SetAlarm(&hrtc, &sAlarm, RTC_FORMAT_BCD) != HAL_OK)
 		crash(6);
