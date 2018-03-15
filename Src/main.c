@@ -58,8 +58,6 @@ UART_HandleTypeDef huart2;
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
-void MX_RTC_Init(void);
-void MX_USART2_UART_Init(void);
 
 /* USER CODE BEGIN PFP */
 /* Private function prototypes -----------------------------------------------*/
@@ -112,8 +110,7 @@ uint8_t g_dailyAlarm;
 // Default config that will be written if nothing sent after 100secs on the serial port
 // Useful in dev phase, we don't need to have a complex setup 
 // But when on battery 3V, will need to use the serial port 
-uint8_t clock_time[31] = "23h59m00s06w03m09d18y00120wkup"; // 30+1 for a 0x00 terminating char inserted by the compilator, but not required to have one
-int clock_time_stringlength = sizeof(clock_time)-1; // 30 is the good number
+uint8_t clock_time[] = "23h59m00s06w03m09d18y00120wkup"; // 30+1 for a 0x00 terminated char inserted by the compilator, but not required to have one
 
 /* USER CODE END 0 */
 
@@ -288,18 +285,22 @@ the data is correct. Otherwise a third read access must be done.
 		}
 		else // this is a power on startup : setup code : get time by serial port or set it to some default value (for tests)
 		{ 
-			
 			pulseTrain3s();  
-			getConfigByComPort(clock_time,clock_time_stringlength);
+			HAL_Delay(3000);
+
+			getConfigByComPort(clock_time,sizeof(clock_time)-1);
 			
 			__HAL_RTC_WRITEPROTECTION_DISABLE(&hrtc);
-			__HAL_RTC_WAKEUPTIMER_DISABLE(&hrtc);
+			__HAL_RTC_WAKEUPTIMER_DISABLE(&hrtc); // necessary  ? 
 			__HAL_RTC_ALARMA_DISABLE(&hrtc);
+			__HAL_RTC_ALARMB_DISABLE(&hrtc);
 			__HAL_RTC_WRITEPROTECTION_ENABLE(&hrtc);
 
-			pulseTrain3s();
 			RTC_Init_Time_and_Date(clock_time);
 			RTC_Set_Enable_WakeUp_AlarmAB(clock_time);
+			pulseTrain3s();
+			HAL_Delay(3000);
+			pulseTrain3s();
 		}
 /*
 	DBGMCU->CR |= DBGMCU_CR_DBG_STOP;
@@ -387,7 +388,9 @@ void SystemClock_Config(void)
   HAL_NVIC_SetPriority(SysTick_IRQn, 0, 0);
 }
 
+
 /* RTC init function */
+// WE DONT CALL THAT FUNCTION, We have our own version.
 void MX_RTC_Init(void)
 {
 
@@ -398,7 +401,7 @@ void MX_RTC_Init(void)
     /**Initialize RTC Only 
     */
   hrtc.Instance = RTC;
-//if(HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR0) != 0x32F2)
+	if(HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR0) != 0x32F2)
 	{
   hrtc.Init.HourFormat = RTC_HOURFORMAT_24;
   hrtc.Init.AsynchPrediv = 127;

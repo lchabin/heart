@@ -7,9 +7,9 @@ extern UART_HandleTypeDef huart2;
 extern RTC_HandleTypeDef hrtc;
 
 #ifdef TESTING
-	uint8_t info[] = "\r\nYou are in debug mode\r\n";
+	uint8_t info[] = "\r\nYou are in debug mode";
 #else
-	uint8_t info[] = "\r\nYou are in final target mode\r\n";	
+	uint8_t info[] = "\r\nYou are in final target mode";	
 #endif
 
 	uint8_t connect[]="\
@@ -19,6 +19,7 @@ Format : hour, minute, second, weekday, month, day of the month, year, wakeupEve
 
 	uint8_t closure[] = "\r\nSetting time to $";
 	uint8_t candisconnect[]= "\r\nYou can now disconnect usb.";
+	
   uint8_t accepted[]="0123456789hmswdykup";
 	
 int valid(uint8_t c)
@@ -45,19 +46,16 @@ int getConfigByComPort(uint8_t *cfgStr, int clock_time_stringlength)
 	int synchronized = false;
 
 	MX_USART2_UART_Init();
-	
-	
-	HAL_Delay(3000);
 	heartBeatOneSecond();
-	HAL_UART_Transmit(&huart2,connect,sizeof(connect)-1,HAL_MAX_DELAY);
 	HAL_UART_Transmit(&huart2,info,sizeof(info)-1,HAL_MAX_DELAY);
+	HAL_UART_Transmit(&huart2,connect,sizeof(connect)-1,HAL_MAX_DELAY);
 	
 	while(cnt<clock_time_stringlength)
 	{
 		if (synchronized)
 		{
-//			result = HAL_UART_Receive(&huart2,&cfgStr[cnt],1,HAL_MAX_DELAY); // Too slow for a paste
-			while (!(huart2.Instance->ISR & USART_ISR_RXNE)); // Blocking, i wait for you.
+//			result = HAL_UART_Receive(&huart2,&cfgStr[cnt],1,HAL_MAX_DELAY); // Too slow for a paste (we run at only 131Khz!)
+			while (!(huart2.Instance->ISR & USART_ISR_RXNE)); // Blocking, i will wait for you human.
 			cfgStr[cnt] = huart2.Instance->RDR;
 			result = HAL_OK;
 		}
@@ -78,16 +76,18 @@ int getConfigByComPort(uint8_t *cfgStr, int clock_time_stringlength)
 				cfgStr[cnt] = huart2.Instance->RDR;
 		}
 		
-		if (result == HAL_TIMEOUT) // display menu, up to 10 times
+		if (result == HAL_TIMEOUT) // display menu forever
 		{
 			timeoutcount++;
+/*
 			if (timeoutcount==100)
 			{
 				break;
 			}
+*/			
 			heartBeatOneSecond();
-			HAL_UART_Transmit(&huart2,connect,sizeof(connect)-1,HAL_MAX_DELAY);
 			HAL_UART_Transmit(&huart2,info,sizeof(info)-1,HAL_MAX_DELAY);
+			HAL_UART_Transmit(&huart2,connect,sizeof(connect)-1,HAL_MAX_DELAY);
 		}
 		else
 		{
@@ -96,13 +96,13 @@ int getConfigByComPort(uint8_t *cfgStr, int clock_time_stringlength)
 				if (cfgStr[cnt]=='$')
 				{
 					synchronized = true;
-					huart2.Instance->TDR = cfgStr[cnt]; // might loose some chars, best effort, even here cpu freq too low for a paste !
+					huart2.Instance->TDR = cfgStr[cnt]; // ECHO, might loose some chars, best effort, even here cpu freq too low for a paste !
 //				HAL_UART_Transmit(&huart2,&cfgStr[cnt],1,HAL_MAX_DELAY); // ECHO (too slow, won't work if you paste)
 				}
 			}
 			else if (valid(cfgStr[cnt])) // accept only chars in our list
 			{
-				huart2.Instance->TDR = cfgStr[cnt]; // might loose some chars, best effort, even here cpu freq too low for a paste !
+				huart2.Instance->TDR = cfgStr[cnt]; // ECHO, might loose some chars, best effort, even here cpu freq too low for a paste !
 //			HAL_UART_Transmit(&huart2,&cfgStr[cnt],1,HAL_MAX_DELAY); // ECHO (too slow, won't work if you paste)
 				cnt++;
 				toggle = 1-toggle;
@@ -141,13 +141,13 @@ uint8_t getBCD(uint8_t *str, int i)
 
 uint16_t get16bits(uint8_t *str, int i)
 {
-	uint8_t nibble;
+	uint8_t x,nibble;
 	uint32_t total;
 	
 	i = i*3;
 	
 	total = 0;
-	for (int x=0;x<5;x++)
+	for (x=0;x<5;x++)
 	{
 		nibble = str[i]-'0';
 		total = total*10+nibble;
@@ -155,7 +155,7 @@ uint16_t get16bits(uint8_t *str, int i)
 	}
 	
 	if (total>65535)
-		total = 65535;
+		total = 0; // assumed to be a mistake. Then we disable.
 	return total;
 }
 
