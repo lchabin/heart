@@ -122,7 +122,7 @@ the battery then reconnect it.
 
 TRYING some tests
 ======================================
-Example out of TESTING mode (heart.hex compile without the define TESTING)
+Example out of TESTING mode (nominal, heart.hex as on github)
 
 it is 1:20pm on thursday 15 march 2018
 
@@ -131,7 +131,7 @@ $13h20m00s04w03m15d18y00000wkup
 will pulse on next saint valentin in 11 months... and short pulse every midnight
 
 =====================================
-Example out of TESTING mode (nominal)
+Example out of TESTING mode (nominal, heart.hex as on github)
 
 it is 5:59pm on thursday 14 feb 2019
 
@@ -141,15 +141,13 @@ will pulse on next saint valentin in one minute, for 18 hours, then next year.
 + short pulse every midnight
 + no wake up pulses
 =====================================
-Example out of TESTING mode (nominal)
+Example out of TESTING mode (nominal, heart.hex as on github)
 
-it is 5:59pm on thursday 14 feb 2019
+it is 5:50pm on thursday 14 feb 2019
 
 $05h50m00s04w02m14d19y00120wkup
 
-will pulse on next saint valentin in ten minute, for 18 hours, then next year.
+will pulse on next saint valentin in ten minutes, for 18 hours, then next year.
 + short pulse every midnight
 + wake up pulse every 120 seconds
 ========================================
-
-$20h35m00s06w03m11d18y00000wkup
