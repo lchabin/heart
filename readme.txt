@@ -6,6 +6,13 @@ For the whole day.
 On NUCLEO-L011K4
 
 ======================================
+As of May 2022, this design has been running non stop since March 17th 2018 on 4 AA alcaline batteries
+Configured to generate a pulse every hour (rather acceptable for the battery).
+It has successfully generated heart beats every Saint Valentin of 2019,2020,2021,2022
+Used this configuration. 
+$13h20m00s04w03m17d18y03600wkup
+See below for explanations.
+======================================
 
 Bill of material 
 
@@ -40,7 +47,7 @@ an iron (just to open the SB14 solder bridge on the nucleo board)
 ======================================
 Justification for the values of the resistors
 
-I leds ? we want 0.02A current in each of the 6 leds total 0.120A, at ~1.85V.
+Current in the leds ? We want 0.02A current in each of the 6 leds total 0.120A, at ~1.85V.
 
 Checking that the transistor will be able to drive the leds in good saturation
 We have in datasheet NPN : hFE = 200.
@@ -122,7 +129,7 @@ the battery then reconnect it.
 
 TRYING some tests
 ======================================
-Example out of TESTING mode (nominal, heart.hex as on github)
+Example (not in TESTING mode, nominal, heart.hex as on github)
 
 it is 1:20pm on thursday 15 march 2018
 
@@ -131,7 +138,7 @@ $13h20m00s04w03m15d18y00000wkup
 will pulse on next saint valentin in 11 months... and short pulse every midnight
 
 =====================================
-Example out of TESTING mode (nominal, heart.hex as on github)
+Example (not in TESTING mode, nominal, heart.hex as on github)
 
 it is 5:59pm on thursday 14 feb 2019
 
@@ -141,7 +148,7 @@ will pulse on next saint valentin in one minute, for 18 hours, then next year.
 + short pulse every midnight
 + no wake up pulses
 =====================================
-Example out of TESTING mode (nominal, heart.hex as on github)
+Example (not in TESTING mode, nominal, heart.hex as on github)
 
 it is 5:50pm on thursday 14 feb 2019
 
@@ -149,5 +156,5 @@ $05h50m00s04w02m14d19y00120wkup
 
 will pulse on next saint valentin in ten minutes, for 18 hours, then next year.
 + short pulse every midnight
-+ wake up pulse every 120 seconds
++ wake up pulse every 120 seconds  (very bad for battery)
 ========================================
