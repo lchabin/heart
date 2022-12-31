@@ -26,17 +26,17 @@ Because it happens that PB3/D13 (GPIO of the nucleo board) also drives the green
 
 
 ### Flashing
-*connect usb to a pc
-*flash using STM32CubeProg available from www.st.com 
++ connect usb to a pc
++ flash using STM32CubeProg available from www.st.com 
 (don't need the trusted package thing). 
-*You flash program the file heart.hex
-*stop STM32CubeProg
++ You flash program the file heart.hex
++ stop STM32CubeProg
 ### Settings and run
-*start a terminal ('tera term' for instance) at 4800 bauds 
-*configure the terminal at 4800 bauds 
-*connect usb to a pc 
-*open connection to new serial port in tera term
-*follow instructions (displayed every 10 sec, with a led pulse)
++ start a terminal ('tera term' for instance) at 4800 bauds 
++ configure the terminal at 4800 bauds 
++ connect usb to a pc 
++ open connection to new serial port in tera term
++ follow instructions (displayed every 10 sec, with a led pulse)
 Then it runs
 
 
@@ -49,23 +49,24 @@ That's the only way to have it running for years.
 See open_sb14.png : open SB14 solder bridge on the bottom on the nucleo board (v conflict).
 From that moment, never connect anymore usb without the 3V battery holders connected to 3.3V
 
-### Flashing
-*connect battery to +3V pin and GND pin
-*connect usb to a pc
-*flash using STM32CubeProg available from www.st.com 
+### Flashing. RESPECT THAT SEQUENCE
++ connect battery to +3V pin and GND pin
++ connect usb to a pc
++ flash using STM32CubeProg available from www.st.com 
 (don't need the trusted package thing).
-*You flash program the file heart.hex
-*stop STM32CubeProg
-*disconnect usb
++ You flash program the file heart.hex
++ stop STM32CubeProg
++ disconnect usb (clean fast disconnection)
 
-### Settings and run
-*start a terminal ('tera term' for instance) at 4800 bauds 
-*configure the terminal at 4800 bauds 
-*connect battery to +3V pin and GND pin
-*connect usb to a pc 
-*open connection to new serial port in tera term
-*follow instructions (displayed every 10 sec, with a led pulse)
-*disconnect usb, voilà !
+### Settings and run. RESPECT THAT SEQUENCE
++ start a terminal ('tera term' for instance) at 4800 bauds 
++ configure the terminal at 4800 bauds 
++ connect battery to +3V pin and GND pin
++ connect usb to a pc 
++ open connection to new serial port in tera term
++ follow instructions (displayed every 10 sec, with a led pulse)
++ disconnect usb (clean fast disconnection), voilà !
+
 Never connect usb without battery connected
 To restart the setting phase, you need to disconnect 
 the battery then reconnect it.
@@ -79,13 +80,13 @@ Examples (not in TESTING mode, nominal, heart.hex as on github)
 
 $13h20m00s04w03m15d18y00000wkup
 
-will pulse on next saint valentin in 11 months... and short pulse every midnight
++ will pulse on next saint valentin in 11 months... and short pulse every midnight
 
 ### it is 5:59pm on thursday 14 feb 2019
 
 $05h59m00s04w02m14d19y00000wkup
 
-will pulse on next saint valentin in one minute, for 18 hours, then next year.
++ will pulse on next saint valentin in one minute, for 18 hours, then next year.
 + short pulse every midnight
 + no wake up pulses
 
@@ -93,6 +94,6 @@ will pulse on next saint valentin in one minute, for 18 hours, then next year.
 
 $05h50m00s04w02m14d19y00120wkup
 
-will pulse on next saint valentin in ten minutes, for 18 hours, then next year.
++ will pulse on next saint valentin in ten minutes, for 18 hours, then next year.
 + short pulse every midnight
 + wake up pulse every 120 seconds  (very bad for battery)
