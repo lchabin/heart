@@ -8,12 +8,16 @@ As of May 2022, this design has been running non stop from March 17th 2018 on 4 
 Configured to generate a pulse every hour (rather acceptable for the battery).
 It has successfully generated heart beats every Saint Valentin of 2019,2020,2021,2022
 
-Used this configuration:
+Used this configuration in 2018:
+
 $13h20m00s04w03m17d18y03600wkup
+
 See below for explanations.
 
 Restarted in Dec. 2022 with new batteries, 
+
 Used this configuration:
+
 $17h14m00s06w12m31d22y03600wkup
 
 
@@ -82,9 +86,11 @@ $13h20m00s04w03m15d18y00000wkup
 
 + will pulse on next saint valentin in 11 months... and short pulse every midnight
 
+nota : monday is 01w
+
 ### it is 5:59pm on thursday 14 feb 2019
 
-$05h59m00s04w02m14d19y00000wkup
+$17h59m00s04w02m14d19y00000wkup
 
 + will pulse on next saint valentin in one minute, for 18 hours, then next year.
 + short pulse every midnight
@@ -92,8 +98,27 @@ $05h59m00s04w02m14d19y00000wkup
 
 ### it is 5:50pm on thursday 14 feb 2019
 
-$05h50m00s04w02m14d19y00120wkup
+$17h50m00s04w02m14d19y03600wkup
 
 + will pulse on next saint valentin in ten minutes, for 18 hours, then next year.
 + short pulse every midnight
-+ wake up pulse every 120 seconds  (very bad for battery)
++ wake up pulse every 3600 seconds  (just ok for the battery, help ensure it works)
+
+
+## Touble shooting
+
+if the red led flashes every 10 sec, that means that it is still in configuration mode
+
+using '03600wkup' help check after one hour that it is really working 
+
+### normal behaviour of the board
+
+after a power on start up, 
+
++ the board does a 3 seconds fast pulse train
++ then it waits for the configuration information
++ just after configuration, it produces again a 3 seconds fast pulse train
++ there is then a 3 seconds delay, 
++ then, it produces again a 3 seconds fast pulse train
+
+I would recommend that you disconnect USB during these 9 seconds of post configuration 
