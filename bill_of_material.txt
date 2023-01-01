@@ -27,7 +27,7 @@ One micro USB cable
 6x 50 ohms resistors will limit current on each led to about 20mA
 1x 2K ohms resistor from cpu PB3/D13 pin to base of transistor
 
-an iron (just to open the SB14 solder bridge on the nucleo board)
+an iron (just to open the SB14 and SB9 solder bridges on the nucleo board)
 
 ======================================
 Justification for the values of the resistors
@@ -49,13 +49,14 @@ But that would make less wires.
 
 
 ======================================
-Checking the firmware and functionality before making the cicuit
+Checking the firmware and functionality before assembly on the breadboard
 
 Because it happens that PB3/D13 also drives the green led of the nucleo board, you can test the functionality with the nucleo board as it is out of the factory. 
-(no resistor, no transistor, no battery, with SB14 still closed, no big led, no breadboard).
+(no resistor, no transistor, no battery, with SB14 and SB9 still closed, no big led, no breadboard).
 
 ======================================
 To build the circuit with the breadboard, the components and wires:
-See schematic.png
-See nucleo.png
+See doc/schematic.png
+See doc/nucleo.png
+See doc/open_sb14_sb9.png
 Ask if you have no idea how to do that.
