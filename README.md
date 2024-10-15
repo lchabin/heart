@@ -1,12 +1,13 @@
-# Red Beating Heart every Saint Valentin
-For the whole day. 
-10 years autonomy goal with 2x2AA alcaline batteries.
+# Red Beating Heart every Saint Valentin For the whole day. 
+Proven 4 years autonomy with 2x2AA alcaline batteries.
 On NUCLEO-L011K4
 
 ## Battery Autonomy
-As of May 2022, this design has been running non stop from March 17th 2018 on 4 AA alcaline batteries to the end of 2022
+This design has been running non stop from March 17th 2018 to the end of 2022 on 4 AA alcaline batteries 
 Configured to generate a pulse every hour (rather acceptable for the battery).
 It has successfully generated heart beats every Saint Valentin of 2019,2020,2021,2022
+The batteries were changed in Dec. 2022. 
+
 
 Used this configuration in 2018:
 
@@ -14,7 +15,6 @@ $13h20m00s04w03m17d18y03600wkup
 
 See below for explanations.
 
-Restarted in Dec. 2022 with new batteries, 
 
 Used this configuration:
 
